@@ -1,5 +1,4 @@
 streamlit
 Pillow
 requests
-google-cloud-aiplatform
-google-auth
+replicate
