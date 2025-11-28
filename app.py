@@ -94,4 +94,18 @@ if menu == "Simulador (Paciente)":
                         st.error(msg)
 
     with col2:
-        st.
+        st.markdown("### Resultado")
+        if 'resultado_atual' in st.session_state:
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.image(st.session_state['foto_original'], caption="Antes", use_column_width=True)
+            with col_b:
+                st.image(st.session_state['resultado_atual'], caption=f"Simulação ({tom_lente})", use_column_width=True)
+            st.button("📅 Agendar Avaliação")
+        else:
+            st.info("Aguardando upload da foto...")
+
+# --- TELA 2: DASHBOARD ---
+elif menu == "Dashboard (Dr. Igor)":
+    st.title("Painel Administrativo")
+    st.info("Área exclusiva do dentista.")
