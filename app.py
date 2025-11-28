@@ -4,7 +4,11 @@ from io import BytesIO
 import os
 import json
 import requests
-from google.cloud import aiplatform 
+# --- CORREÇÃO FINAL: IMPORTAÇÕES ROBUSTAS DO GOOGLE CLOUD ---
+from google.cloud import aiplatform
+# Importa o serviço de predição, que é o que fará a chamada direta à IA
+from google.cloud.aiplatform.services import PredictionServiceClient
+from google.cloud.aiplatform_v1.types.predict_service import PredictRequest
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="IBR Clinic System", layout="wide", page_icon="🦷")
@@ -18,40 +22,34 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- FUNÇÃO DE AUTENTICAÇÃO ROBUSTA (Com a Correção de Sequência) ---
+# --- FUNÇÃO DE AUTENTICAÇÃO E INICIALIZAÇÃO ---
 
 def autenticar_google():
-    # --- FIX: INICIALIZAÇÃO DA VARIÁVEL (Resolve o UnboundLocalError) ---
     temp_file_name = None 
-    
     if "GCP_SA_KEY" not in st.secrets:
         st.error("ERRO: Chave do Google Cloud (GCP_SA_KEY) não configurada nos Secrets.")
         return None
 
     try:
-        # 1. Carrega o JSON da string multi-linha nos Secrets
         sa_key_json_string = st.secrets["GCP_SA_KEY"]
         credentials_dict = json.loads(sa_key_json_string)
         project_id = credentials_dict.get('project_id')
         
-        # 2. ESCREVER O ARQUIVO JSON TEMPORARIAMENTE NO SERVIDOR
+        # 1. Escreve o JSON temporário
         temp_file_name = f"gcp_credentials_{project_id}.json"
-        
         with open(temp_file_name, "w") as f:
             f.write(sa_key_json_string)
         
-        # 3. SETAR A VARIÁVEL DE AMBIENTE (Obrigatório para o Google)
+        # 2. Seta a variável de ambiente
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_name
 
-        # 4. Inicializa o Vertex AI
+        # 3. Inicializa o Vertex AI (agora deve funcionar)
         aiplatform.init(
             project=project_id, 
             location="us-central1"
         )
         return project_id
     except Exception as e:
-        # 5. GARANTIA DE LIMPEZA
-        # Agora só tenta remover se a variável foi definida E se o arquivo existe
         if temp_file_name is not None and os.path.exists(temp_file_name):
             os.remove(temp_file_name)
         st.error(f"ERRO DE AUTENTICAÇÃO: Falha ao inicializar o Google Cloud com o JSON. Detalhe: {e}")
@@ -60,44 +58,56 @@ def autenticar_google():
 # --- FUNÇÃO PRINCIPAL: EDIÇÃO IMAGEN (GOOGLE) ---
 
 def transformar_sorriso_imagen(image_file, tom):
-    """Executa a chamada ao modelo Imagen no Vertex AI para edição de imagem."""
+    """Executa a chamada ao modelo Imagen no Vertex AI usando PredictionServiceClient."""
     
-    # 1. PREPARAÇÃO DA IMAGEM (Anti-Rotação e Redimensionamento)
+    # ... (Preparações da Imagem) ...
     img = Image.open(image_file)
     try:
         img = ImageOps.exif_transpose(img)
     except:
         pass
     img.thumbnail((1024, 1024))
-    
-    # Converte para bytes (base64) para enviar para a API
     buffer = BytesIO()
     img.save(buffer, format="JPEG", quality=90)
     img_bytes = buffer.getvalue()
     
+    # Codifica a imagem para Base64 (Obrigatório para a maioria das APIs REST/GAPIC)
+    import base64
+    encoded_image = base64.b64encode(img_bytes).decode('utf-8')
+    
     # 2. PROMPT DE EDIÇÃO
-    desc_cor = "natural white"
-    if "BL1" in tom: desc_cor = "extremely white bright"
-    elif "BL2" in tom: desc_cor = "natural white"
-    elif "BL4" in tom: desc_cor = "warm natural white"
+    edit_prompt = f"Change the teeth to perfect {tom} porcelain veneers. Professional dental photography."
 
-    edit_prompt = f"Change the teeth to perfect {desc_cor} porcelain veneers. The final image must be of professional dental photography quality. Keep the face and lips identical."
-
-    # 3. CHAMADA À API (Google Imagen)
+    # 3. CHAMADA À API (USANDO O CLIENTE GARANTIDO)
     try:
-        model = aiplatform.ImageGenerationModel.from_pretrained('imagegeneration') 
+        # Parâmetros de Entrada para a API
+        instance = {
+            "prompt": edit_prompt,
+            "image": {"image_bytes": encoded_image},
+            "sample_count": 1,
+            "edit_mode": "inpainting", # O MODO DE EDIÇÃO É POR AQUI
+            "aspect_ratio": "1:1" # Para garantir estabilidade
+        }
+
+        # Cria a requisição de predição
+        endpoint = f"projects/{st.session_state['project_id']}/locations/us-central1/endpoints/imagen-edit@002"
         
-        result = model.edit_image(
-            prompt=edit_prompt,
-            image_bytes=img_bytes,
-            config=dict(
-                number_of_images=1,
-                person_generation="do not generate people" 
-            )
+        # Inicializa o cliente de serviço
+        client = PredictionServiceClient(client_options={"api_endpoint": "us-central1-aiplatform.googleapis.com"})
+        
+        # Cria a requisição (o corpo da chamada)
+        request = PredictRequest(
+            endpoint=endpoint,
+            instances=[instance] # Envia o payload
         )
 
-        if result.generated_images:
-            img_data = result.generated_images[0].image.image_bytes
+        # 4. EXECUTA A CHAMADA
+        response = client.predict(request=request)
+        
+        if response.predictions:
+            # A resposta contém a imagem em Base64
+            img_base64_data = response.predictions[0]["image"]
+            img_data = base64.b64decode(img_base64_data)
             img_tratada = Image.open(BytesIO(img_data))
             return img_tratada, "Sucesso: Editado pelo Google Imagen 3!"
         
@@ -110,6 +120,7 @@ def transformar_sorriso_imagen(image_file, tom):
 with st.sidebar:
     st.title("IBR Clinic")
     project_id = autenticar_google()
+    st.session_state['project_id'] = project_id # Salva o ID do projeto no estado
     if project_id:
         st.success(f"Motor Google OK ({project_id})")
     else:
@@ -119,6 +130,7 @@ with st.sidebar:
     st.caption("Motor IA: Google Imagen 3")
 
 if menu == "Simulador (Paciente)":
+    # ... (Restante da Interface) ...
     col1, col2 = st.columns([1, 2])
     
     with col1:
@@ -146,10 +158,8 @@ if menu == "Simulador (Paciente)":
         if 'res' in st.session_state:
             st.markdown("### Resultado da Simulação")
             st.image(st.session_state['res'], use_column_width=True)
-            
             with st.expander("Comparar com Original"):
                 st.image(st.session_state['org'], caption="Foto Original", use_column_width=True)
-                
             st.button("📲 Enviar para WhatsApp da Clínica")
         else:
             st.info("O resultado aparecerá aqui.")
