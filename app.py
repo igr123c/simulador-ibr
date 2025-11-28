@@ -8,7 +8,6 @@ import os
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="IBR Clinic System", layout="wide", page_icon="🦷")
 
-# --- CSS PARA DEIXAR COM CARA DE APP PROFISSIONAL ---
 st.markdown("""
 <style>
     .main { background-color: #f8f9fa; }
@@ -18,38 +17,41 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- FUNÇÃO MÁGICA DE IA (Replicate) ---
+# --- FUNÇÃO MÁGICA DE IA (Atualizada para SDXL) ---
 def transformar_sorriso(image_file, tom):
-    """
-    Envia a foto para a IA (Replicate) e retorna o sorriso novo.
-    """
-    # 1. Validação da Chave
+    # 1. Autenticação
     try:
-        api_key = st.secrets["REPLICATE_API_TOKEN"]
-        os.environ["REPLICATE_API_TOKEN"] = api_key
+        # Tenta pegar dos segredos
+        if "REPLICATE_API_TOKEN" in st.secrets:
+             os.environ["REPLICATE_API_TOKEN"] = st.secrets["REPLICATE_API_TOKEN"]
+        # Se não tiver, tenta pegar do ambiente direto (caso tenha salvo antes)
     except:
-        return None, "ERRO: A Chave da IA não foi configurada nos 'Secrets' do App."
+        pass
+    
+    if not os.environ.get("REPLICATE_API_TOKEN"):
+        return None, "ERRO: Chave da API não encontrada. Vá em Settings > Secrets."
 
-    # 2. Prepara a imagem (CORREÇÃO AQUI: "Engarrafa" os bytes como arquivo)
+    # 2. Prepara a imagem
     input_bytes = image_file.getvalue()
     arquivo_formatado = BytesIO(input_bytes)
     
-    # Modelo de IA (Stable Diffusion - Edit/Inpainting)
-    # Usando um modelo específico para edições realistas
-    MODEL_ID = "stability-ai/stable-diffusion:27f2754605151523457a4199c72e2d9369d120a10c9c37562143b81109968847"
+    # 3. MODELO NOVO (SDXL - Alta Definição)
+    # Este é o modelo mais moderno e estável atualmente
+    MODEL_ID = "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
 
     try:
         output = replicate.run(
             MODEL_ID,
             input={
-                "image": arquivo_formatado, # Agora enviamos o arquivo formatado
-                "prompt": f"Close-up of a human smile, apply highly realistic, perfect porcelain veneers, natural tone {tom}. Keeping original mouth shape. High resolution, dental photography.",
-                "negative_prompt": "low quality, cartoon, unnatural lighting, fake texture, blurry, artifacts, deformed teeth, missing teeth, extra teeth, metal braces",
-                "prompt_strength": 0.8 # Força da IA (0 a 1)
+                "image": arquivo_formatado,
+                # Prompt Refinado para Estética Dental
+                "prompt": f"Professional dental photography close-up, cosmetic dentistry, perfect {tom} porcelain veneers, natural teeth texture, highly detailed, 8k resolution, cinematic lighting, realistic mouth structure.",
+                "negative_prompt": "cartoon, illustration, painting, drawing, fake, blur, ugly, deformed, cavity, metal, yellow teeth, missing teeth, extra fingers",
+                "prompt_strength": 0.75, # Equilíbrio entre a foto original e a edição
+                "mask_blur": 0
             }
         )
         
-        # Baixa a imagem gerada pela IA
         if output and isinstance(output, list) and output[0]:
             response = requests.get(output[0])
             img_tratada = Image.open(BytesIO(response.content))
@@ -58,54 +60,46 @@ def transformar_sorriso(image_file, tom):
         return None, "A IA processou mas não retornou imagem válida."
 
     except Exception as e:
-        return None, f"Erro na API: {e}"
+        return None, f"Erro Técnico: {e}"
 
-# --- BARRA LATERAL (MENU) ---
+# --- INTERFACE ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/3004/3004458.png", width=50)
     st.title("IBR Clinic")
     menu = st.radio("Navegação", ["Simulador (Paciente)", "Dashboard (Dr. Igor)"])
     st.markdown("---")
-    st.caption("Status: 🟢 Online")
+    st.caption("Motor IA: Stable Diffusion XL")
 
-# --- TELA 1: SIMULADOR (VISÃO DO PACIENTE) ---
 if menu == "Simulador (Paciente)":
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        st.header("Seu Novo Sorriso")
-        st.write("Faça o upload da sua foto para visualizar suas lentes de contato.")
-        uploaded_file = st.file_uploader("Escolha uma foto (Rosto de frente)", type=['jpg', 'png', 'jpeg'])
+        st.header("Simulação Estética")
+        st.write("Faça upload de uma foto frontal do sorriso.")
+        uploaded_file = st.file_uploader("Arquivo de Imagem", type=['jpg', 'png', 'jpeg'])
         
-        st.markdown("### Personalização")
-        tom_lente = st.select_slider("Selecione a Tonalidade", options=["BL1 (Extra Branco)", "BL2 (Branco Natural)", "BL3 (Natural)", "BL4 (Sutil)"])
+        st.markdown("### Planejamento")
+        tom_lente = st.select_slider("Cor Desejada", options=["BL1 (Branco Absoluto)", "BL2 (Branco Natural)", "BL3 (Natural)", "BL4 (Sutil)"])
         
-        if uploaded_file is not None:
-            if st.button("✨ Gerar Simulação"):
-                with st.spinner('A Inteligência Artificial está desenhando seu sorriso...'):
-                    # Passa o arquivo original para a função
+        if uploaded_file:
+            if st.button("✨ Gerar Sorriso Novo"):
+                with st.spinner('Processando imagem em Alta Definição (Isso leva uns 10s)...'):
                     resultado, msg = transformar_sorriso(uploaded_file, tom_lente)
-                    
                     if resultado:
-                        st.session_state['resultado_atual'] = resultado
-                        st.session_state['foto_original'] = Image.open(uploaded_file)
-                        st.success("Pronto!")
+                        st.session_state['res'] = resultado
+                        st.session_state['org'] = Image.open(uploaded_file)
+                        st.success("Concluído!")
                     else:
                         st.error(msg)
 
     with col2:
-        st.markdown("### Resultado")
-        if 'resultado_atual' in st.session_state:
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.image(st.session_state['foto_original'], caption="Antes", use_column_width=True)
-            with col_b:
-                st.image(st.session_state['resultado_atual'], caption=f"Simulação ({tom_lente})", use_column_width=True)
-            st.button("📅 Agendar Avaliação")
+        if 'res' in st.session_state:
+            st.image(st.session_state['res'], caption="Resultado da Simulação", use_column_width=True)
+            with st.expander("Ver Foto Original"):
+                st.image(st.session_state['org'], use_column_width=True)
         else:
-            st.info("Aguardando upload da foto...")
+            st.info("O resultado aparecerá aqui.")
 
-# --- TELA 2: DASHBOARD ---
 elif menu == "Dashboard (Dr. Igor)":
     st.title("Painel Administrativo")
-    st.info("Área exclusiva do dentista.")
+    st.info("Área restrita.")
