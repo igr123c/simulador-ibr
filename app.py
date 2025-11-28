@@ -1,10 +1,9 @@
 import streamlit as st
-from PIL import Image
-import requests
-from io import BytesIO
-import time
-import os
 import replicate
+import requests
+from PIL import Image
+from io import BytesIO
+import os
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="IBR Clinic System", layout="wide", page_icon="🦷")
@@ -20,43 +19,43 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- FUNÇÃO MÁGICA DE IA (Replicate) ---
-# (A linha de erro foi removida daqui)
 def transformar_sorriso(image_file, tom):
     """
     Envia a foto para a IA (Replicate) e retorna o sorriso novo.
     """
-    
-    # Tenta pegar a chave dos Segredos do Streamlit
+    # 1. Validação da Chave
     try:
         api_key = st.secrets["REPLICATE_API_TOKEN"]
         os.environ["REPLICATE_API_TOKEN"] = api_key
     except:
         return None, "ERRO: A Chave da IA não foi configurada nos 'Secrets' do App."
 
-    # Prepara a imagem
+    # 2. Prepara a imagem (CORREÇÃO AQUI: "Engarrafa" os bytes como arquivo)
     input_bytes = image_file.getvalue()
+    arquivo_formatado = BytesIO(input_bytes)
     
-    # Modelo de IA (Stable Diffusion Inpainting ou similar)
+    # Modelo de IA (Stable Diffusion - Edit/Inpainting)
+    # Usando um modelo específico para edições realistas
     MODEL_ID = "stability-ai/stable-diffusion:27f2754605151523457a4199c72e2d9369d120a10c9c37562143b81109968847"
 
     try:
-        # Chama a API da Replicate
         output = replicate.run(
             MODEL_ID,
             input={
-                "image": input_bytes,
-                "prompt": f"Close-up of a human smile, apply highly realistic, perfect porcelain veneers, natural tone {tom}. Keeping original mouth shape.",
-                "negative_prompt": "low quality, cartoon, unnatural lighting, fake texture, blurry, artifacts, deformed teeth"
+                "image": arquivo_formatado, # Agora enviamos o arquivo formatado
+                "prompt": f"Close-up of a human smile, apply highly realistic, perfect porcelain veneers, natural tone {tom}. Keeping original mouth shape. High resolution, dental photography.",
+                "negative_prompt": "low quality, cartoon, unnatural lighting, fake texture, blurry, artifacts, deformed teeth, missing teeth, extra teeth, metal braces",
+                "prompt_strength": 0.8 # Força da IA (0 a 1)
             }
         )
         
-        # Baixa a imagem gerada
+        # Baixa a imagem gerada pela IA
         if output and isinstance(output, list) and output[0]:
             response = requests.get(output[0])
             img_tratada = Image.open(BytesIO(response.content))
-            return img_tratada, "Sucesso: Simulação Gerada pela IA!"
+            return img_tratada, "Sucesso!"
         
-        return None, "A IA não conseguiu gerar a imagem."
+        return None, "A IA processou mas não retornou imagem válida."
 
     except Exception as e:
         return None, f"Erro na API: {e}"
@@ -76,7 +75,6 @@ if menu == "Simulador (Paciente)":
     with col1:
         st.header("Seu Novo Sorriso")
         st.write("Faça o upload da sua foto para visualizar suas lentes de contato.")
-        
         uploaded_file = st.file_uploader("Escolha uma foto (Rosto de frente)", type=['jpg', 'png', 'jpeg'])
         
         st.markdown("### Personalização")
@@ -85,6 +83,7 @@ if menu == "Simulador (Paciente)":
         if uploaded_file is not None:
             if st.button("✨ Gerar Simulação"):
                 with st.spinner('A Inteligência Artificial está desenhando seu sorriso...'):
+                    # Passa o arquivo original para a função
                     resultado, msg = transformar_sorriso(uploaded_file, tom_lente)
                     
                     if resultado:
@@ -95,21 +94,4 @@ if menu == "Simulador (Paciente)":
                         st.error(msg)
 
     with col2:
-        st.markdown("### Resultado")
-        if 'resultado_atual' in st.session_state:
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.image(st.session_state['foto_original'], caption="Antes", use_column_width=True)
-            with col_b:
-                st.image(st.session_state['resultado_atual'], caption=f"Simulação ({tom_lente})", use_column_width=True)
-                
-            st.info("Gostou? Clique abaixo para agendar.")
-            st.button("📅 Agendar Avaliação")
-        else:
-            st.info("Aguardando upload da foto...")
-
-# --- TELA 2: DASHBOARD (VISÃO DO DENTISTA) ---
-elif menu == "Dashboard (Dr. Igor)":
-    st.title("Painel Administrativo")
-    st.write("Aqui ficarão salvas as simulações dos pacientes.")
-    # (Código simplificado para focar no erro)
+        st.
