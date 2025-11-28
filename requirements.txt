@@ -1,4 +1,5 @@
-streamlit>=1.28.0
-replicate
+streamlit
 Pillow
 requests
+google-cloud-aiplatform
+google-auth
