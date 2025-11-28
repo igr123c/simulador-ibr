@@ -4,7 +4,6 @@ from io import BytesIO
 import os
 import json
 import requests
-# Importações do Google Cloud
 from google.cloud import aiplatform 
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
@@ -19,10 +18,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- FUNÇÃO DE AUTENTICAÇÃO ROBUSTA (Com a correção de sintaxe) ---
+# --- FUNÇÃO DE AUTENTICAÇÃO ROBUSTA (Com a Correção de Sequência) ---
 
 def autenticar_google():
-    """Lê a chave JSON dos Segredos, salva temporariamente e autentica o Google Cloud."""
+    # --- FIX: INICIALIZAÇÃO DA VARIÁVEL (Resolve o UnboundLocalError) ---
+    temp_file_name = None 
+    
     if "GCP_SA_KEY" not in st.secrets:
         st.error("ERRO: Chave do Google Cloud (GCP_SA_KEY) não configurada nos Secrets.")
         return None
@@ -49,10 +50,10 @@ def autenticar_google():
         )
         return project_id
     except Exception as e:
-        # 5. GARANTIA DE LIMPEZA E MENSAGEM DE ERRO COM SINTAXE CORRETA
-        if os.path.exists(temp_file_name):
+        # 5. GARANTIA DE LIMPEZA
+        # Agora só tenta remover se a variável foi definida E se o arquivo existe
+        if temp_file_name is not None and os.path.exists(temp_file_name):
             os.remove(temp_file_name)
-        # ESTA LINHA ESTAVA COM O ERRO DE SINTAXE: AGORA ESTÁ CORRETA.
         st.error(f"ERRO DE AUTENTICAÇÃO: Falha ao inicializar o Google Cloud com o JSON. Detalhe: {e}")
         return None
 
@@ -86,7 +87,6 @@ def transformar_sorriso_imagen(image_file, tom):
     try:
         model = aiplatform.ImageGenerationModel.from_pretrained('imagegeneration') 
         
-        # Chamada ao método de edição
         result = model.edit_image(
             prompt=edit_prompt,
             image_bytes=img_bytes,
